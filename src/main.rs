@@ -11,18 +11,11 @@ fn main() {
     for stream in server.incoming() {
         spawn(move || -> ! {
             let callback = |req: &Request, mut response: Response| {
-                println!("Received a new ws handshake");
-                println!("The request's path is: {}", req.uri().path());
-                println!("The request's headers are:");
-                for (header, _value) in req.headers() {
-                    println!("* {header}");
-                }
-
-                // Let's add an additional header to our response to the client.
-                let headers = response.headers_mut();
-                headers.append("MyCustomHeader", ":)".parse().unwrap());
-                headers.append("SOME_TUNGSTENITE_HEADER", "header_value".parse().unwrap());
-
+                response.headers_mut().insert(
+                    "signature",
+                    "ArtiSocketSrv".parse().unwrap(),
+                );
+                new_connection_info(req);
                 Ok(response)
             };
             let mut websocket = accept_hdr(stream.unwrap(), callback).unwrap();
@@ -31,22 +24,30 @@ fn main() {
                 let msg = websocket.read().unwrap();
                 if msg.is_binary() || msg.is_text() {
                     websocket.send(msg.clone()).unwrap();
-                    
-                    match msg {
-                        tungstenite::Message::Text(t) => {
-                            let txt: String = String::from(t.clone().as_bytes().iter().map(|c| {
-                                if *c == b'\n' {
-                                    ' '
-                                } else {
-                                    char::from(*c)
-                                }
-                            }).collect::<String>());                            
-                            println!("[↘︎] {}", txt);
-                        }
-                        _ => {},
-                    }
+                    print_message(&msg);
                 }
             }
         });
+    }
+}
+
+fn new_connection_info(req: &Request) {
+    println!("new connection: {}", req.uri().path());
+}
+
+fn print_message(msg: &tungstenite::Message) {
+    match msg {
+        tungstenite::Message::Text(t) => {
+            let txt: String = String::from(t.clone().as_bytes().iter().map(|c| {
+                if *c == b'\n' {
+                    ' '
+                } else {
+                    char::from(*c)
+                }
+            }).collect::<String>());
+            println!("[↘︎] {}", txt);
+        }
+        tungstenite::Message::Binary(_) => println!("[↘︎] binary message"),
+        _ => {}
     }
 }
